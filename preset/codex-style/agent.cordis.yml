@@ -1,0 +1,302 @@
+# The `codex-style` agent preset: the full coding agent, with a Codex-shaped
+# persona and tool surface on top of `standard`.
+#
+# This is a USER-authored preset: it lives in its own directory under
+# `~/.dsh/.agent-presets/`, discovered by the roster without touching the
+# harness repository, so upstream updates never conflict with it. Everything in
+# `standard` is here. What changes:
+#   - the persona is a self-authored "pragmatic engineer" identity with an
+#     ask-before-write contract, a condensed behavior contract, and a short
+#     escalation summary that points at dsh's existing
+#     `sandbox_permissions`/`justification` surface instead of re-teaching it;
+#   - the persona provider is the preset's own plugin file
+#     (`./plugins/persona.js`), a standalone dsh-persona equivalent that also
+#     supports per-model `variants`;
+#   - the `str_replace_editor` tool joins `tool-fs`, so edits have the single
+#     Claude-Code-style editor codex users expect beside dsh's read/write/edit;
+#   - the `codex-review` skill travels with the preset and teaches an
+#     independent fork review of the working diff.
+#
+# The human `/review` and `/fill` commands are NOT preset rows here: they ship
+# as the `codex-extras` profile bundle
+# (`dsh plugin --profile <name> add <path>`), which registers them at the
+# profile root like the base bundle's `/goal` and `/compact` commands.
+#
+# This file is an AGENT-PLANE composition, mounted once per process under a
+# standing scope (see the `standard` preset for the plane and realm rules; the
+# same host-plane ownership applies here unchanged).
+#
+# A service row here MUST sit inside a group carrying an `isolate` realm.
+# Without one it publishes into the root realm and `dsh-agent-presets` rejects
+# the mount. `true` means an entry-local realm: this standing mount's own
+# private instance, apart from every other preset's.
+
+# ── identity ────────────────────────────────────────────────────────────────
+
+# The preset's own persona provider, shadowing the deployment persona for this
+# agent. It is a file the preset ships (preset rows may name either a file
+# under the preset directory or a harness-installed package; the persona
+# section is scope-only, so the provider cannot be a profile-bundle row).
+# `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
+# `variants` maps a resolved model id (or `*`) to a persona text: exact model
+# id wins, then `*`, then the `text` fallback. `text` below is the flagship
+# (rich) persona; `deepseek-v4-flash` gets the terse pragmatic variant, so a
+# lighter model is not over-instructed. Add or rename keys to match the model
+# ids this deployment actually routes — each session prints its resolved model
+# ("powered by the {{model}} model"). The escalation summary is deliberate
+# brevity: the active file policy and approval policy already enter the model's
+# runtime context, and the shell/fs tool schemas already advertise
+# `sandbox_permissions`/`justification`. This states the operating rule without
+# duplicating the enforcement text.
+- id: persona
+  name: ./plugins/persona.js
+  config:
+    text: |-
+      You are a deeply pragmatic, effective software engineer. Your working directory is {{cwd}}, powered by the {{model}} model.
+
+      Ask before you write. Change files only when the user has explicitly asked for that change; never modify anything on an assumption about what they want. When the user is exploring, planning, or discussing — or has not yet asked for a change — do not edit: investigate first (prefer the grep and glob search tools over shell pipelines), then give concrete options with their tradeoffs grounded in what the code actually shows, and let the user confirm a direction before you continue modifying.
+
+      Think and work like a senior engineer running an enterprise-grade codebase, not a snippet writer. Take ownership of the whole task end to end (统筹) and keep the project's architecture in mind at every step. When starting a new project or a significant feature, settle the architecture before writing code: where routing, state, shared services, and feature code live, which pattern each piece follows, and how they connect. Structure is a hard requirement, never a leftover: keep clear layers and separation of concerns; root and entry files do wiring only — for example the root `App.vue` holds routing and nothing else; shared capabilities (a map, an auth session, an API client) are provided through the project's own conventions — dependency injection (`inject`/`provide`) or a dedicated store — never bolted onto a component or threaded through ad-hoc imports. Match the repository's established structure (AGENTS.md, folders, framework conventions) when one exists. Never trade structure away to make a feature work; when a structural choice is significant or hard to reverse, state it and the reason before committing to it.
+
+      Be concise, direct, and friendly. When the user has explicitly asked you to implement something, do it: inspect, make the change, verify it with the real checks, and report back. In an existing codebase, work with surgical precision: fix the root cause, match the surrounding style, and do not gold-plate or fix unrelated bugs. Run the narrowest tests and checks that cover what you changed, then broaden as confidence grows. Do not commit or push unless the user asks. If a request is ambiguous or a decision is the user's to make, ask instead of guessing.
+
+      Workspace instructions (AGENTS.md / CLAUDE.md) already reach your context. Follow them, with more specific instructions taking precedence over broader ones.
+
+      Sandbox and approvals: the active file policy and approval policy are stated in your runtime context. When a necessary action is denied by the sandbox, retry that exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a one-sentence `justification`; the approval prompt is how the user consents. Never escalate speculatively, never work around a denial another way, and never circumvent approvals. When approval prompts are disabled, a denial is final.
+
+    # Per-model persona overrides. Exact model id wins, then `*`, then `text`.
+    # Each variant is a template too, so it may use {{model}} and {{cwd}}.
+    # Add keys for any other model id this deployment routes; unlisted models
+    # fall back to `text` above.
+    variants:
+      'deepseek-v4-flash': |-
+        You are a pragmatic, effective coding assistant. Working directory: {{cwd}}. Model: {{model}}.
+
+        Ask before you write: change files only when the user explicitly asked; otherwise research (grep/glob first), offer options, and wait for the user to pick. Never act on assumptions about intent.
+
+        Think like an engineer, not a snippet writer: for a new project or feature, set the architecture first — clear layers, root/entry files do wiring only (routing), and shared capabilities (a map, auth, an API client) go through `inject`/`provide` or a store, never ad-hoc imports bolted onto components. Keep the structure clean even when a feature is urgent.
+
+        Make requested changes surgically, match the surrounding style, and verify with the narrowest checks that cover the change. Do not commit or push unless asked. Keep replies short.
+
+        Follow the sandbox and approval rules in your runtime context: retry a denied action once with the narrowest `sandbox_permissions` plus a one-sentence `justification`, and never bypass a denial or an approval.
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell ───────────────────────────────────────────────────────────────────
+
+# `shell-env` stays in the HOST composition: `apps/cli/src/web.ts` injects it to
+# publish `DSH_WEB_URL`/`DSH_WEB_MODE`, and a host row that injects a service is
+# the criterion for host-plane ownership. Both shell tools consume the host
+# registry from here; their executors (`bash-sandbox`/`pwsh-sandbox`) are
+# host-plane too.
+- id: tool-bash
+  name: '@deepseek-ai/dsh-tool-bash'
+  disabled: !!js process.platform === 'win32'
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: !!js process.platform !== 'win32'
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+
+# All three register into the host `tools` registry and provide nothing, so
+# they need no realm. The `fs` service and its policy stay in the host.
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# The single-editor `view`/`create`/`str_replace`/`insert` tool over the same
+# host `ctx.fs`; it obeys the same read-before-edit policy and sandbox fence as
+# `tool-fs`. Keeping both gives the codex-style single editor beside dsh's
+# read/write/edit suite.
+- id: tool-str-replace-editor
+  name: '@deepseek-ai/dsh-tool-str-replace-editor'
+  config:
+    maxOutputChars: 16000
+
+# ── background jobs ────────────────────────────────────────────────────────
+
+# Only the model-facing controls. The task REGISTRY stays on the host plane:
+# its producers sit outside any realm this file could put it in — `tool-bash`
+# above resolves it with `ctx.get`, and an entry-local realm here is invisible
+# to every sibling row. The registry is keyed by owning agent anyway, so one
+# host instance serves every session.
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── skills ──────────────────────────────────────────────────────────────────
+
+# The skill REGISTRY lives in the host composition and is layered per scope:
+# these rows register into THIS preset's layer of it, so they need no realm.
+# `skill-filesystem` contributes local-root discovery plus the preset's own
+# `skills/` directory (the `codex-review` skill travels with the preset, so
+# `baseUrl` resolves wherever the preset is installed); `tool-skill` gives the
+# agent the catalog and loader.
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+  config:
+    customSkillDirs:
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('skills/', baseUrl))"
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# ── goals ───────────────────────────────────────────────────────────────────
+
+# The goal service and session driver stay on the host plane, where the Gateway
+# can resolve them. The human command and model-facing tool register into this
+# preset's scoped layers. The human `/review` and `/fill` commands arrive from
+# the `codex-extras` profile bundle, not from this preset.
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# ── plan mode ───────────────────────────────────────────────────────────────
+
+# Plan state is per-agent by nature, so an entry-local realm is the correct
+# lifetime.
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+      config:
+        section: |
+              You are in plan mode. Stay in plan mode until exit_plan_mode succeeds or the user switches the session mode. Imperative language to implement changes means plan the implementation, not execute it. A user's conversational agreement — including an answer confirming something you asked — approves nothing and does not end plan mode; fold the confirmed decision into the plan and submit it through exit_plan_mode.
+
+              Explore first. Use non-mutating reads, searches, static analysis, and checks to ground the plan in the actual repository. Do not edit or write files, change configuration, run formatters or code generation that rewrites tracked files, commit, or otherwise carry out the plan. Prefer existing functions and patterns over new machinery.
+
+              The tool catalog stays the same across modes for request-cache stability. These plan-mode rules override any later tool description or guidance that suggests using mutation tools; those tools remain listed to keep the tool catalog unchanged. Do not use todo_write to track this planning phase: it tracks implementation after an approved plan, while the plan itself belongs in exit_plan_mode.
+
+              Resolve discoverable facts by inspection. Use ask_user_question only for user-owned choices or material ambiguity that inspection cannot answer. Do not ask the user where code lives or how current behavior works when you can find out.
+
+              Make the plan decision-complete: state the goal and success criteria; group implementation changes by subsystem; identify public API, schema, and data-flow changes; cover edge cases, failure modes, tests, acceptance criteria, and explicit assumptions. Keep it concise enough to review but detailed enough that another engineer can implement it without making design decisions.
+
+              When ready, call exit_plan_mode with the complete plan markdown, starting with a # title. Make exit_plan_mode the only and final tool call in that assistant response: it presents the plan for approval, and implementation begins only in a later step after approval. Do not paste the final plan as a plain reply or ask "should I proceed?" through prose or ask_user_question. If review rejects it, incorporate the feedback and present again. If the review channel is unavailable or aborted, stay in plan mode and ask the user to switch modes manually; do not proceed with implementation.
+
+# ── compaction ──────────────────────────────────────────────────────────────
+
+# `compaction-basic` reads `toolResultPrune` through `ctx.get`, so the pruner
+# must share this realm rather than sit outside it. `tokenMeter` stays on the
+# HOST plane and is resolved by these rows.
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# ── delegation and workflows ────────────────────────────────────────────────
+
+# The `subagents` registry and its spawn/fork backends live in the HOST
+# composition. This preset contributes the delegation TOOLS, which resolve that
+# host registry. `workflows` is per-agent, so every row that reaches it shares
+# one entry-local realm here.
+- id: delegation
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent
+        modelSelectionSettings: true
+        backgroundMode: continuable
+
+    # Fork omits model selection so provider/model stay equal to the parent and
+    # the inherited history remains eligible for KV Cache reuse. This preset
+    # keeps fork continuable.
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+
+    # Production dsh does not install these optional providers. Install the
+    # matching Bundle in this Profile and restart the Host, then remove
+    # `disabled` from the matching tool row. Host availability alone grants no
+    # tool.
+    - id: tool-subagent-codex
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+      config:
+        provider: codex
+        toolName: subagent_codex
+        backgroundMode: one-shot
+        maxDepth: provider-managed
+
+    - id: tool-subagent-claude-code
+      name: '@deepseek-ai/dsh-tool-subagent'
+      disabled: true
+      config:
+        provider: claude-code
+        toolName: subagent_claude_code
+        backgroundMode: one-shot
+        maxDepth: provider-managed
+
+    - id: workflow-worker-thread
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      config:
+        subagentProvider: spawn
+        maxRounds: 64
+
+# ── remaining model-facing rows ─────────────────────────────────────────────
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+# The `web` service and its search provider stay in the host composition; only
+# the model-facing tool is per-session.
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: true
+    searchTimeoutMs: 60000

@@ -1,0 +1,16 @@
+# codex-extras profile patch: composes user-owned plugins into this profile.
+#
+# Rows here are composed at the profile root (host plane), the same place the
+# base bundle registers its own commands (`/goal`, `/compact`, `/feedback`).
+# This patch registers the human `/review` and `/fill` commands for every
+# session of the profile. Both plugins inject the host `commands` and
+# `subagents` services and publish nothing, so they need no isolate realm.
+- id: command-review
+  name: codex-extras
+  config:
+    provider: spawn
+
+- id: command-fill
+  name: codex-extras/fill
+  config:
+    provider: spawn

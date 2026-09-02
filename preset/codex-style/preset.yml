@@ -1,0 +1,2 @@
+name: Codex 风格
+description: 在完整编码 Agent 之上叠加务实工程师人设、str_replace_editor 编辑器与自审 skill，复刻 Codex 的开箱体验。随附 codex-extras bundle 提供 /review 命令。

@@ -1,0 +1,27 @@
+{
+  "name": "codex-extras",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "User profile bundle for DeepSeek Harness: codex-style extras that live outside the harness repo. Currently the human /review and /fill commands (more to come).",
+  "exports": {
+    ".": "./review.js",
+    "./review": "./review.js",
+    "./fill": "./fill.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "review.js",
+    "fill.js",
+    "cordis.patch.yml",
+    "preset",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
