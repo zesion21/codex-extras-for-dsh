@@ -115,4 +115,4 @@ dsh plugin --profile <名字> remove codex-extras
 - **profile bundle 行**(`cordis.patch.yml`):host 平面能力,对所有会话可用(如 `/review`、`/fill`);
 - **预设行**:per-agent 能力。预设行只能引用预设自带的文件(`./plugins/…`)或 harness 已安装的包——不能是 profile 安装的 bundle——所以无法作为 harness 包的 per-agent 插件以文件形式放在预设目录内(如 `plugins/persona.js`)。
 
-插件文件遵循函数插件契约(具名导出 `name` / `inject` / `apply`,无 default export),然后从所选的行引用它。
+添加插件文件并从所选的行引用它。**模块格式取决于挂载面**:bundle 包内(包声明了 `"type": "module"`)的插件用 ESM,具名导出 `name` / `inject` / `apply` 且无 default export;**预设本地插件文件**(以 `./plugins/…` 从预设行引用、位于没有 `package.json` 的用户主目录下)**必须是 CommonJS**——`module.exports = { name, inject, apply }`——因为加载器对它走 `require()`,那里的 ESM 语法 `.js` 会被识别成 ES Module 并触发 `require(esm)` 循环错误(参见 `plugins/persona.js`)。两种形式暴露的都是同样的函数插件字段。

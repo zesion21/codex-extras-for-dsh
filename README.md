@@ -182,5 +182,12 @@ There are two mounting surfaces, and the rule decides between them:
   harness package travel as files inside the preset directory (like
   `plugins/persona.js`).
 
-Add a plugin file with the function-plugin contract (named `name` / `inject` /
-`apply`, no default export) and reference it from the chosen row.
+Add a plugin file and reference it from the chosen row. The module format
+depends on the mounting surface: plugin files inside this bundle package
+(which is `"type": "module"`) are ESM with named `name` / `inject` / `apply`
+exports and no default export; **preset-local plugin files** (referenced from a
+preset row as `./plugins/…` and living under a user-home directory with no
+`package.json`) must be CommonJS — `module.exports = { name, inject, apply }` —
+because the loader `require()`s them, and an ESM-syntax `.js` there is
+detected as an ES Module and fails with a `require(esm)` cycle error (see
+`plugins/persona.js`). Both forms expose the same function-plugin fields.

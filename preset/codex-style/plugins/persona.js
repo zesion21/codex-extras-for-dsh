@@ -10,20 +10,27 @@
 //     a package installed in the harness — never a profile-installed bundle —
 //     so a per-preset provider has to be a file the preset carries.
 //
-// Like review.js this file is dependency-free plain ESM: it imports nothing.
+// CommonJS on purpose: preset file rows are loaded with Node `require()`. A
+// user-home preset directory has no `package.json` `"type": "module"`, so an
+// ESM-syntax `.js` file there is detected as an ES Module and `require(esm)`
+// inside the loader's cycle fails ("Cannot require() ES Module … in a
+// cycle"). `module.exports` keeps this file loadable through both `require()`
+// and dynamic `import()` (which exposes it as `default` plus detected named
+// exports).
+//
 // `deployment:persona` below is the literal value of the `PERSONA_SECTION`
 // constant that @deepseek-ai/dsh-system-prompt exports; a bare package import
 // would not resolve from a user-home preset file, so the constant is kept
 // literal. Registering the same section name inside an agent scope shadows the
 // deployment persona exactly like the dsh-persona row does.
-//
-// Function-plugin contract: named `name` / `inject` / `apply`, no default
-// export (loader builds the plugin from this namespace).
 
-export const name = 'persona'
+'use strict'
+
+/** Plugin name (function-plugin contract). */
+const name = 'persona'
 
 /** The prompt registry this row contributes to. */
-export const inject = ['systemPrompt']
+const inject = ['systemPrompt']
 
 /** Section name shared with @deepseek-ai/dsh-system-prompt's PERSONA_SECTION. */
 const PERSONA_SECTION = 'deployment:persona'
@@ -35,7 +42,7 @@ const PERSONA_SECTION = 'deployment:persona'
  */
 function selectText(text, variants, context) {
   if (variants === undefined) return text
-  const model = context?.agent?.options?.model
+  const model = context && context.agent && context.agent.options && context.agent.options.model
   if (typeof model !== 'string') return text
   if (Object.hasOwn(variants, model)) return variants[model]
   if (Object.hasOwn(variants, '*')) return variants['*']
@@ -50,8 +57,8 @@ function selectText(text, variants, context) {
  * `*` -> persona text), `complete`, `includeRuntimeContext` — same fields as
  * the dsh-persona row, minus schema validation.
  */
-export function apply(ctx, config) {
-  const cfg = config ?? {}
+function apply(ctx, config) {
+  const cfg = config || {}
   const text = typeof cfg.text === 'string' ? cfg.text : ''
   const variants = cfg.variants
   const render = variants === undefined
@@ -65,3 +72,5 @@ export function apply(ctx, config) {
   }), 'persona.section()')
   if (cfg.includeRuntimeContext === false) ctx.systemPrompt.suppressRuntimeContext()
 }
+
+module.exports = { name, inject, apply }
