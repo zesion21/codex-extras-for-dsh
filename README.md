@@ -25,14 +25,27 @@ enters the parent's model history. This is a plain-ESM Cordis function plugin
 ### `/fill` command (profile bundle)
 
 A human slash command (`fill.js`) that fills the placeholders of a project
-template file with real repository facts. It is meant for workflows that start
-from a cloned template: run `/fill` after cloning and an independent child
-agent reads `AGENTS.md` (or the file you name, `/fill <file>`), replaces every
-placeholder it can infer confidently from the repository (git remote, package
-name/description, language, license, dates), leaves ambiguous tokens for you,
-and reports `token -> value` plus a "Remaining" list. Invoking `/fill` is the
-explicit request that authorizes the edits; the child still follows the
-sandbox and approval rules and never invents a value.
+template file. It is meant for workflows that start from a cloned template, and
+it asks before it writes: a template's placeholders are product decisions, and a
+freshly cloned repository supports none of them, so a repository-only fill would
+report almost every token as unfilled.
+
+Run `/fill` after cloning. The command asks three questions — purpose, type and
+stack, and any project-specific constraints — through the `userQuestions` seam,
+then spawns an independent child agent that fills `AGENTS.md` (or the file you
+name, `/fill <file>`) from those answers plus the facts the repository does carry
+(git remote, package name/description, language, license, dates). The child
+derives what the answers imply (project name and root directory from the
+directory name, a starting version, the per-layer stack prose, the project type)
+and reconciles the template's generic "project structure" block with the answered
+stack, so it never describes directories the project will not have. It reports
+`token -> value` plus a "Remaining" list, and never invents a value.
+
+The questions are asked by the command rather than the child, because a child
+agent owned by another agent cannot call `ask_user_question`. When that seam is
+unavailable or the ask fails, `/fill` does not block: it states the gap and falls
+back to a repository-only fill. Invoking `/fill` is the explicit request that
+authorizes the edits; the child still follows the sandbox and approval rules.
 
 ### `codex-style` agent preset (preset directory)
 
