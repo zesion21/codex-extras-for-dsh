@@ -5,12 +5,17 @@
 # This patch registers the human `/review` and `/fill` commands for every
 # session of the profile. Both plugins inject the host `commands` and
 # `subagents` services and publish nothing, so they need no isolate realm.
-- id: command-review
-  name: codex-extras
-  config:
-    provider: spawn
+#
+# A patch entry carrying only `id` OVERRIDES an existing row; a row that does
+# not exist yet must instead arrive inside `insert:`, which appends it to this
+# surface. Both rows below are new, so they travel in one insert list.
+- insert:
+    - id: command-review
+      name: codex-extras
+      config:
+        provider: spawn
 
-- id: command-fill
-  name: codex-extras/fill
-  config:
-    provider: spawn
+    - id: command-fill
+      name: codex-extras/fill
+      config:
+        provider: spawn

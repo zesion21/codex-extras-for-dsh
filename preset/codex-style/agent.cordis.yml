@@ -37,9 +37,13 @@
 # agent. It is a file the preset ships (preset rows may name either a file
 # under the preset directory or a harness-installed package; the persona
 # section is scope-only, so the provider cannot be a profile-bundle row).
+# A persona is two registry sections — `deployment:persona-prefix` and
+# `deployment:persona-suffix` — and this row shadows both: `prefix` below
+# carries the prose, and an omitted `suffix` clears the deployment's so it does
+# not trail this preset's text.
 # `{{model}}` and `{{cwd}}` resolve from the agent's own route and workspace.
 # `variants` maps a resolved model id (or `*`) to a persona text: exact model
-# id wins, then `*`, then the `text` fallback. `text` below is the flagship
+# id wins, then `*`, then the `prefix` fallback. `prefix` below is the flagship
 # (rich) persona; `deepseek-v4-flash` gets the terse pragmatic variant, so a
 # lighter model is not over-instructed. Add or rename keys to match the model
 # ids this deployment actually routes — each session prints its resolved model
@@ -51,7 +55,7 @@
 - id: persona
   name: ./plugins/persona.js
   config:
-    text: |-
+    prefix: |-
       You are a deeply pragmatic, effective software engineer. Your working directory is {{cwd}}, powered by the {{model}} model.
 
       Ask before you write. Change files only when the user has explicitly asked for that change; never modify anything on an assumption about what they want. When the user is exploring, planning, or discussing — or has not yet asked for a change — do not edit: investigate first (prefer the grep and glob search tools over shell pipelines), then give concrete options with their tradeoffs grounded in what the code actually shows, and let the user confirm a direction before you continue modifying.
@@ -64,10 +68,10 @@
 
       Sandbox and approvals: the active file policy and approval policy are stated in your runtime context. When a necessary action is denied by the sandbox, retry that exact call once with `sandbox_permissions` (the narrowest wider mode that suffices) plus a one-sentence `justification`; the approval prompt is how the user consents. Never escalate speculatively, never work around a denial another way, and never circumvent approvals. When approval prompts are disabled, a denial is final.
 
-    # Per-model persona overrides. Exact model id wins, then `*`, then `text`.
+    # Per-model persona overrides. Exact model id wins, then `*`, then `prefix`.
     # Each variant is a template too, so it may use {{model}} and {{cwd}}.
     # Add keys for any other model id this deployment routes; unlisted models
-    # fall back to `text` above.
+    # fall back to `prefix` above.
     variants:
       'deepseek-v4-flash': |-
         You are a pragmatic, effective coding assistant. Working directory: {{cwd}}. Model: {{model}}.

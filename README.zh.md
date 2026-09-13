@@ -18,7 +18,7 @@
 
 预设目录内有两个**预设本地文件**能力(由组合规则决定,不是偏好):
 
-- `plugins/persona.js` —— persona 提供者。它是 `dsh-persona` 行加按模型 `variants` 的独立等价实现:从“解析出的模型 id(或 `*`)→ persona 文本”映射,精确 id 优先、其次 `*`、最后回退 `text`。预设行只能引用“预设自带的文件”或“harness 已安装的包”,且 persona 段是 scope-only(全局注册会与 prompt registry 冲突),所以提供者必须是预设目录内的文件。`variants` 在预设的 `agent.cordis.yml` 的 `persona` 行配置。预设自带 persona 携带完整工程师契约,`text` 为旗舰完整版,`deepseek-v4-flash` 使用精简务实版:
+- `plugins/persona.js` —— persona 提供者。它是 `dsh-persona` 行加按模型 `variants` 的独立等价实现:从“解析出的模型 id(或 `*`)→ persona 文本”映射,精确 id 优先、其次 `*`、最后回退 `prefix`。预设行只能引用“预设自带的文件”或“harness 已安装的包”,且 persona 段是 scope-only(全局注册会与 prompt registry 冲突),所以提供者必须是预设目录内的文件。`variants` 在预设的 `agent.cordis.yml` 的 `persona` 行配置。预设自带 persona 携带完整工程师契约,`prefix` 为旗舰完整版,`deepseek-v4-flash` 使用精简务实版:
   - **先问再写**:只有用户明确要求改动才直接改;探索/讨论状态先检索(grep/glob)再给可选项,待用户确认后动手;
   - **不臆断**:请求含糊或决策属于用户时,问而不是猜;
   - **架构优先 + 统筹**:以企业级资深工程师视角统筹整个任务;新项目/大功能先定架构再写代码;结构是硬要求——入口/根文件只做装配(如根 `App.vue` 只放路由),地图、鉴权、API client 等共享能力走 `inject`/`provide` 或 store,绝不因“功能能跑”牺牲结构;重大结构选择先说明理由;

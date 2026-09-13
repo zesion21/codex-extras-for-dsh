@@ -18,11 +18,20 @@
 // and dynamic `import()` (which exposes it as `default` plus detected named
 // exports).
 //
-// `deployment:persona` below is the literal value of the `PERSONA_SECTION`
-// constant that @deepseek-ai/dsh-system-prompt exports; a bare package import
-// would not resolve from a user-home preset file, so the constant is kept
-// literal. Registering the same section name inside an agent scope shadows the
-// deployment persona exactly like the dsh-persona row does.
+// A persona is TWO sections in the current registry, not one:
+// `deployment:persona-prefix` (persona prose) and `deployment:persona-suffix`
+// (first-party guidance rendered after it). The registry registers both
+// globally from its own `personaPrefix`/`personaSuffix` config, so replacing a
+// persona means shadowing both by name inside the agent scope — registering
+// only a prefix leaves the deployment's suffix trailing this preset's text.
+//
+// The section names below are the literal values of
+// @deepseek-ai/dsh-system-prompt's PERSONA_PREFIX_SECTION and
+// PERSONA_SUFFIX_SECTION constants, and the order values come from that
+// package's own allocation table via `getSectionOrder`. Both are kept as
+// registry lookups rather than literals: a bare package import would not
+// resolve from a user-home preset file, and hard-coding an order would drift
+// when the registry reallocates positions.
 
 'use strict'
 
@@ -32,44 +41,55 @@ const name = 'persona'
 /** The prompt registry this row contributes to. */
 const inject = ['systemPrompt']
 
-/** Section name shared with @deepseek-ai/dsh-system-prompt's PERSONA_SECTION. */
-const PERSONA_SECTION = 'deployment:persona'
+/** Section name shared with @deepseek-ai/dsh-system-prompt's PERSONA_PREFIX_SECTION. */
+const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'
+
+/** Section name shared with @deepseek-ai/dsh-system-prompt's PERSONA_SUFFIX_SECTION. */
+const PERSONA_SUFFIX_SECTION = 'deployment:persona-suffix'
 
 /**
  * Select the persona text for the resolved model. An exact model id wins, then
- * the `*` wildcard, then the fallback `text`. `context.agent` is absent on
+ * the `*` wildcard, then the fallback `prefix`. `context.agent` is absent on
  * cold assemblies with no agent, so the fallback covers that too.
  */
-function selectText(text, variants, context) {
-  if (variants === undefined) return text
+function selectText(prefix, variants, context) {
+  if (variants === undefined) return prefix
   const model = context && context.agent && context.agent.options && context.agent.options.model
-  if (typeof model !== 'string') return text
+  if (typeof model !== 'string') return prefix
   if (Object.hasOwn(variants, model)) return variants[model]
   if (Object.hasOwn(variants, '*')) return variants['*']
-  return text
+  return prefix
 }
 
 /**
- * Register the persona section for the mounting context's scope.
+ * Register the persona prefix and suffix sections for the mounting context's
+ * scope.
  * @param ctx - an agent scope context; an unscoped context collides with the
  * prompt registry's own persona registration and rejects.
- * @param config - `text` (fallback persona), optional `variants` (model-id or
- * `*` -> persona text), `complete`, `includeRuntimeContext` — same fields as
- * the dsh-persona row, minus schema validation.
+ * @param config - `prefix` (persona prose, fallback text), optional `suffix`
+ * (defaults to `''`, shadowing the deployment suffix), optional `variants`
+ * (model-id or `*` -> persona text), `complete`, `includeRuntimeContext` —
+ * same fields as the dsh-persona row, minus schema validation.
  */
 function apply(ctx, config) {
   const cfg = config || {}
-  const text = typeof cfg.text === 'string' ? cfg.text : ''
+  const prefix = typeof cfg.prefix === 'string' ? cfg.prefix : ''
+  const suffix = typeof cfg.suffix === 'string' ? cfg.suffix : ''
   const variants = cfg.variants
   const render = variants === undefined
-    ? text
-    : (context) => selectText(text, variants, context)
+    ? prefix
+    : (context) => selectText(prefix, variants, context)
   ctx.effect(() => ctx.systemPrompt.section({
-    name: PERSONA_SECTION,
-    order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA'),
+    name: PERSONA_PREFIX_SECTION,
+    order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
     text: render,
     ...(cfg.complete === true ? { complete: true } : {}),
   }), 'persona.section()')
+  ctx.effect(() => ctx.systemPrompt.section({
+    name: PERSONA_SUFFIX_SECTION,
+    order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_SUFFIX'),
+    text: suffix,
+  }), 'persona.suffix()')
   if (cfg.includeRuntimeContext === false) ctx.systemPrompt.suppressRuntimeContext()
 }
 

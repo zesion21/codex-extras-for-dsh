@@ -47,7 +47,7 @@ rule rather than choice:
 
 - `plugins/persona.js` — the persona provider. It is a standalone equivalent
   of the `dsh-persona` row plus per-model `variants`: a map from a resolved
-  model id (or `*`) to persona text; exact id wins, then `*`, then `text`.
+  model id (or `*`) to persona text; exact id wins, then `*`, then `prefix`.
   A preset row can name only a file the preset ships or a harness-installed
   package, and the persona section is scope-only (a global registration
   collides with the prompt registry), so the provider must be a file under the
@@ -60,7 +60,7 @@ rule rather than choice:
   keep root/entry files to wiring only (routing), route shared capabilities (a
   map, auth, an API client) through `inject`/`provide` or a store, and never
   trade structure away to make a feature work. It also fills per-model
-  variants for DeepSeek tiers (`text` is the rich flagship persona,
+  variants for DeepSeek tiers (`prefix` is the rich flagship persona,
   `deepseek-v4-flash` gets the terse pragmatic one). dsh's permission and
   approval stack is untouched: this contract is behavior, not enforcement.
 - `skills/codex-review/SKILL.md` — a review skill that runs the review through
