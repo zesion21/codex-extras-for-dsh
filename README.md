@@ -103,8 +103,12 @@ Restart the Host so the bundle patch composes, then pick the preset ("Codex
 ## Updating the harness
 
 Because none of this lives in the harness repo, updating dsh is a plain upgrade
-of the deployment. After an upgrade, re-run the `dsh plugin` command only if
-the profile lost its dependencies; the preset directory needs no action.
+of the deployment — no merge, no conflicts. Two things can still need attention.
+Re-run the `dsh plugin` command if the profile lost its dependencies. Then
+re-check the preset: its rows name installed harness packages and their config
+keys, so a release can rename or restructure them, and a row that no longer
+resolves either fails to mount or mounts and silently does nothing. The check is
+in [AGENTS.md](AGENTS.md).
 
 ## Moving to another machine
 

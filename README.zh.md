@@ -58,7 +58,7 @@ cp -R preset/codex-style/. <目标>
 
 ## 升级 harness
 
-这些都不在 harness 仓库里,升级 dsh 就是普通升级部署。升级后只有当 profile 丢了依赖时才需要重跑一次 `dsh plugin` 命令;预设目录无需任何动作。
+这些都不在 harness 仓库里,升级 dsh 就是普通升级部署——无需合并、不会冲突。仍有两处需要注意。profile 丢了依赖时,重跑一次 `dsh plugin` 命令;然后复查预设:它的行引用的是 harness 已安装的包及其配置键,某个版本可能把它们改名或改结构,于是一行要么挂载失败,要么挂上了却什么都不做。检查方法见 [AGENTS.md](AGENTS.md)。
 
 ## 迁移到另一台机器
 
@@ -113,6 +113,6 @@ dsh plugin --profile <名字> remove codex-extras
 有两个挂载面,规则决定选哪个:
 
 - **profile bundle 行**(`cordis.patch.yml`):host 平面能力,对所有会话可用(如 `/review`、`/fill`);
-- **预设行**:per-agent 能力。预设行只能引用预设自带的文件(`./plugins/…`)或 harness 已安装的包——不能是 profile 安装的 bundle——所以无法作为 harness 包的 per-agent 插件以文件形式放在预设目录内(如 `plugins/persona.js`)。
+- **预设行**:per-agent 能力。预设行只能引用预设自带的文件(`./plugins/…`)或 harness 已安装的包——不能是 profile 安装的 bundle——所以那些无法做成 harness 包的 per-agent 插件,就以文件形式放在预设目录内(如 `plugins/persona.js`)。
 
 添加插件文件并从所选的行引用它。**模块格式取决于挂载面**:bundle 包内(包声明了 `"type": "module"`)的插件用 ESM,具名导出 `name` / `inject` / `apply` 且无 default export;**预设本地插件文件**(以 `./plugins/…` 从预设行引用、位于没有 `package.json` 的用户主目录下)**必须是 CommonJS**——`module.exports = { name, inject, apply }`——因为加载器对它走 `require()`,那里的 ESM 语法 `.js` 会被识别成 ES Module 并触发 `require(esm)` 循环错误(参见 `plugins/persona.js`)。两种形式暴露的都是同样的函数插件字段。
