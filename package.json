@@ -4,24 +4,30 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "User profile bundle for DeepSeek Harness: codex-style extras that live outside the harness repo. Currently the human /review and /fill commands (more to come).",
+  "description": "User profile bundle for DeepSeek Harness 0.2.x: the human /review and /fill commands plus the codex-style agent preset (model-aware persona, single editor, review skill).",
   "exports": {
     ".": "./review.js",
     "./review": "./review.js",
     "./fill": "./fill.js",
+    "./persona": "./persona.js",
     "./package.json": "./package.json"
   },
   "files": [
     "review.js",
     "fill.js",
+    "persona.js",
     "cordis.patch.yml",
-    "preset",
+    "presets",
+    "skills",
     "README.md",
     "README.zh.md"
   ],
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": [
+        "./cordis.patch.yml",
+        "./presets/codex-style.patch.yml"
+      ]
     }
   }
 }

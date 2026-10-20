@@ -66,11 +66,19 @@ async function executeReview(ctx, invocation, provider) {
   }
   let run
   try {
-    run = await ctx.subagents.start(provider, {
+    // dsh 0.2.x replaced the old `subagents.start(provider, request)` with the
+    // capability-validating `startActivation(spec)`. `delivery: 'caller'` keeps
+    // the verdict out of the parent's model history, which is the whole point
+    // of an independent review.
+    run = await ctx.subagents.startActivation({
+      provider,
       label: 'review',
-      prompt: [{ type: 'text', text: REVIEW_PROMPT }],
-      parent: invocation.agent,
+      request: {
+        prompt: [{ type: 'text', text: REVIEW_PROMPT }],
+        parent: invocation.agent,
+      },
       signal: invocation.signal,
+      delivery: 'caller',
     })
   } catch (error) {
     if (invocation.signal.aborted) return { kind: 'error', text: 'Review cancelled.' }

@@ -187,11 +187,18 @@ async function executeFill(ctx, invocation, provider) {
 
   let run
   try {
-    run = await ctx.subagents.start(provider, {
+    // Same activation API as review.js: the explicit invocation authorizes the
+    // child's edits, and `delivery: 'caller'` returns the report to the human
+    // without pushing it into the parent's model history.
+    run = await ctx.subagents.startActivation({
+      provider,
       label: 'fill',
-      prompt: [{ type: 'text', text: fillPrompt(target, asked.kind === 'answered' ? asked.text : undefined) }],
-      parent: invocation.agent,
+      request: {
+        prompt: [{ type: 'text', text: fillPrompt(target, asked.kind === 'answered' ? asked.text : undefined) }],
+        parent: invocation.agent,
+      },
       signal: invocation.signal,
+      delivery: 'caller',
     })
   } catch (error) {
     if (invocation.signal.aborted) return { kind: 'error', text: `${warning}Fill cancelled.` }

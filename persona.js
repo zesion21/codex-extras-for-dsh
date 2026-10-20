@@ -1,22 +1,16 @@
-// Model-aware persona provider carried by the codex-style preset.
+// Model-aware persona provider shipped by the codex-extras bundle.
 //
 // This is a standalone equivalent of the dsh-persona row plus per-model
-// variants. It ships as a FILE INSIDE the preset directory because of two
-// composition rules:
-//   - the persona section is scope-only: registering it globally (a profile
-//     bundle row) collides with the prompt registry's own registration and
-//     fails loud, so the provider must mount under one agent preset;
-//   - a preset row can name either a file the preset ships (`./plugins/…`) or
-//     a package installed in the harness — never a profile-installed bundle —
-//     so a per-preset provider has to be a file the preset carries.
+// variants. It is a PACKAGE SUBPATH (`codex-extras/persona`) rather than a
+// preset-local file because dsh 0.2.x mounts agent presets as declaration rows
+// inside a bundle patch: a declaration's child rows inherit the DECLARING
+// Loader's resolution base (the profile directory), so `./plugins/persona.js`
+// inside a preset directory no longer resolves. The profile has this package
+// installed, so a bare subpath resolves there.
 //
-// CommonJS on purpose: preset file rows are loaded with Node `require()`. A
-// user-home preset directory has no `package.json` `"type": "module"`, so an
-// ESM-syntax `.js` file there is detected as an ES Module and `require(esm)`
-// inside the loader's cycle fails ("Cannot require() ES Module … in a
-// cycle"). `module.exports` keeps this file loadable through both `require()`
-// and dynamic `import()` (which exposes it as `default` plus detected named
-// exports).
+// ESM on purpose: this package is `"type": "module"`, and dsh's Loader imports
+// relative/package rows with `import()`. The previous directory-preset file was
+// CommonJS because the legacy loader `require()`d preset files.
 //
 // A persona is TWO sections in the current registry, not one:
 // `deployment:persona-prefix` (persona prose) and `deployment:persona-suffix`
@@ -28,18 +22,13 @@
 // The section names below are the literal values of
 // @deepseek-ai/dsh-system-prompt's PERSONA_PREFIX_SECTION and
 // PERSONA_SUFFIX_SECTION constants, and the order values come from that
-// package's own allocation table via `getSectionOrder`. Both are kept as
-// registry lookups rather than literals: a bare package import would not
-// resolve from a user-home preset file, and hard-coding an order would drift
-// when the registry reallocates positions.
-
-'use strict'
+// package's own allocation table via `getSectionOrder`.
 
 /** Plugin name (function-plugin contract). */
-const name = 'persona'
+export const name = 'persona'
 
 /** The prompt registry this row contributes to. */
-const inject = ['systemPrompt']
+export const inject = ['systemPrompt']
 
 /** Section name shared with @deepseek-ai/dsh-system-prompt's PERSONA_PREFIX_SECTION. */
 const PERSONA_PREFIX_SECTION = 'deployment:persona-prefix'
@@ -71,7 +60,7 @@ function selectText(prefix, variants, context) {
  * (model-id or `*` -> persona text), `complete`, `includeRuntimeContext` —
  * same fields as the dsh-persona row, minus schema validation.
  */
-function apply(ctx, config) {
+export function apply(ctx, config) {
   const cfg = config || {}
   const prefix = typeof cfg.prefix === 'string' ? cfg.prefix : ''
   const suffix = typeof cfg.suffix === 'string' ? cfg.suffix : ''
@@ -79,6 +68,15 @@ function apply(ctx, config) {
   const render = variants === undefined
     ? prefix
     : (context) => selectText(prefix, variants, context)
+  // dsh 0.2.x registers only `provider` and `model` as prompt variables; the
+  // persona templates also reference `{{cwd}}`, so this scoped provider
+  // supplies it from the assembling agent's session header. A scoped variable
+  // shadows a global one, so this stays correct if the harness later adds its
+  // own `cwd`.
+  ctx.effect(() => ctx.systemPrompt.variable('cwd', (context) => {
+    const cwd = context?.agent?.session?.header?.cwd
+    return typeof cwd === 'string' ? cwd : undefined
+  }), 'persona.variable(cwd)')
   ctx.effect(() => ctx.systemPrompt.section({
     name: PERSONA_PREFIX_SECTION,
     order: ctx.systemPrompt.getSectionOrder('DEPLOYMENT_PERSONA_PREFIX'),
@@ -92,5 +90,3 @@ function apply(ctx, config) {
   }), 'persona.suffix()')
   if (cfg.includeRuntimeContext === false) ctx.systemPrompt.suppressRuntimeContext()
 }
-
-module.exports = { name, inject, apply }

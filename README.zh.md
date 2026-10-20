@@ -1,6 +1,8 @@
 # codex-extras
 
-为 DeepSeek Harness 自建的 profile bundle:codex 风格能力,**全部在 harness 仓库之外**,上游更新永远不会与它冲突。当前提供人肉 `/review` 与 `/fill` 命令(profile bundle),并携带配套 `codex-style` agent 预设的源码(persona 提供者与 review skill 以文件形式放在预设目录内)。`tools` 的 `search` 披露模式被有意搁置:它需要改动 `dsh-tools` 注册表内部、没有插件扩展缝,不属于本包。
+为 DeepSeek Harness 自建的 profile bundle:codex 风格能力,**全部在 harness 仓库之外**,上游更新永远不会与它冲突。提供人肉 `/review` 与 `/fill` 命令,并声明配套 `codex-style` agent 预设(含按模型切换的 persona 提供者与 review skill)。`tools` 的 `search` 披露模式被有意搁置:它需要改动 `dsh-tools` 注册表内部、没有插件扩展缝,不属于本包。
+
+本 checkout 面向 dsh **0.2.x**:agent 预设已经是 bundle patch 里的 `@deepseek-ai/dsh-agent-preset` 声明行,不再是 `$DSH_HOME/.agent-presets/<id>/` 目录;harness 也不再把后者当作预设读取。同时子 agent 启动 API 从 `subagents.start()` 变为 `subagents.startActivation()`。两处均已迁移。
 
 ## 提供什么
 
@@ -16,32 +18,49 @@
 
 提问由命令而非子 agent 发起,因为被其他 agent 拥有的子 agent 无法调用 `ask_user_question`。当该 seam 不可用或提问失败时,`/fill` 不会卡住:它会说明这一缺口并退化为只从仓库推导的填充。敲 `/fill` 本身就是明确的修改授权;子 agent 仍遵守沙箱与审批规则。
 
-### `codex-style` agent 预设(预设目录)
+### `codex-style` agent 预设(bundle 声明)
 
-`preset/codex-style/` 在完整 `standard` 工具面之上叠加 codex 形态的 persona、`str_replace_editor` 单编辑器与 `codex-review` skill。安装方式是把目录复制进 `~/.dsh/.agent-presets/codex-style`——不改仓库、不注册、与上游零冲突。
+`presets/codex-style.patch.yml` 插入一条 id 为 `codex-style` 的
+`@deepseek-ai/dsh-agent-preset` 声明行,在完整 `standard` 工具面之上叠加
+codex 形态的 persona、`str_replace_editor` 单编辑器与 `codex-review` skill。
+它和命令由同一条 `dsh plugin add` 安装——无需登记 roster、无需单独复制目录,
+也不改 harness 仓库。
 
-预设目录内有两个**预设本地文件**能力(由组合规则决定,不是偏好):
+两个能力由本包承载,而不是预设目录:
 
-- `plugins/persona.js` —— persona 提供者。它是 `dsh-persona` 行加按模型 `variants` 的独立等价实现:从“解析出的模型 id(或 `*`)→ persona 文本”映射,精确 id 优先、其次 `*`、最后回退 `prefix`。预设行只能引用“预设自带的文件”或“harness 已安装的包”,且 persona 段是 scope-only(全局注册会与 prompt registry 冲突),所以提供者必须是预设目录内的文件。`variants` 在预设的 `agent.cordis.yml` 的 `persona` 行配置。预设自带 persona 携带完整工程师契约,`prefix` 为旗舰完整版,`deepseek-v4-flash` 使用精简务实版:
-  - **先问再写**:只有用户明确要求改动才直接改;探索/讨论状态先检索(grep/glob)再给可选项,待用户确认后动手;
+- `persona.js`(包子路径 `codex-extras/persona`)—— persona 提供者。它是
+  `dsh-persona` 行加按模型 `variants` 的独立等价实现:从"解析出的模型 id
+  (或 `*`)→ persona 文本"映射,精确 id 优先、其次 `*`、最后回退 `prefix`。
+  0.2.x 的预设声明按"声明方 Loader 的 base"(即 profile 目录)解析子行,
+  `./plugins/…` 这类预设本地文件不再能解析,所以提供者必须是已安装的包,
+  本 bundle 就是那个包。`variants` 在 `presets/codex-style.patch.yml` 的
+  `persona` 行配置。预设自带 persona 携带完整工程师契约:`prefix` 为旗舰
+  完整版,`deepseek-v4-flash` 使用精简务实版:
+  - **先问再写**:只有用户明确要求改动才直接改;探索/讨论状态先检索
+    (grep/glob)再给可选项,待用户确认后动手;
   - **不臆断**:请求含糊或决策属于用户时,问而不是猜;
-  - **架构优先 + 统筹**:以企业级资深工程师视角统筹整个任务;新项目/大功能先定架构再写代码;结构是硬要求——入口/根文件只做装配(如根 `App.vue` 只放路由),地图、鉴权、API client 等共享能力走 `inject`/`provide` 或 store,绝不因“功能能跑”牺牲结构;重大结构选择先说明理由;
-  - **权限不变**:dsh 的沙箱/审批机制未动——以上是行为契约,不是强制;越权写的硬边界仍由 dsh 权限栈保证。
-- `skills/codex-review/SKILL.md` —— 通过 `subagent_fork` 做独立评审的 skill,避免父会话上下文左右结论。
+  - **架构优先 + 统筹**:以企业级资深工程师视角统筹整个任务;新项目/大功能
+    先定架构再写代码;结构是硬要求——入口/根文件只做装配(如根 `App.vue`
+    只放路由),地图、鉴权、API client 等共享能力走 `inject`/`provide` 或
+    store,绝不因"功能能跑"牺牲结构;重大结构选择先说明理由;
+  - **权限不变**:dsh 的沙箱/审批机制未动——以上是行为契约,不是强制;越权
+    写的硬边界仍由 dsh 权限栈保证。
+- `skills/codex-review/SKILL.md` —— 通过 `subagent_fork` 做独立评审的
+  skill,避免父会话上下文左右结论。`skill-filesystem` 行用
+  `createRequire(...).resolve(...)` 从已安装的 `codex-extras` 包解析该目录,
+  因此走 profile 的模块解析,而不是硬编码路径。
 
 ## 目录结构
 
 ```
 codex-extras/
-  package.json            # 声明 dsh.bundle.patch -> 本包成为 profile 补丁层
-  review.js               # /review 命令插件(纯 ESM,零依赖)
-  fill.js                 # /fill 命令插件(纯 ESM,零依赖)
-  cordis.patch.yml        # profile 行:在 profile 根注册 /review 与 /fill
-  preset/codex-style/     # 本地 agent 预设的源(单独安装)
-    agent.cordis.yml
-    preset.yml
-    plugins/persona.js    # 按模型 persona 提供者(文件行 ./plugins/persona.js)
-    skills/codex-review/SKILL.md
+  package.json                     # dsh.bundle.patch -> 本包成为 profile 补丁层
+  review.js                        # /review 命令插件(纯 ESM,零依赖)
+  fill.js                          # /fill 命令插件(纯 ESM,零依赖)
+  persona.js                       # 按模型 persona 提供者(包子路径 ./persona)
+  cordis.patch.yml                 # profile 行:注册 /review 与 /fill
+  presets/codex-style.patch.yml    # 声明 codex-style agent 预设
+  skills/codex-review/SKILL.md     # 预设携带的 review skill
 ```
 
 ## 安装
@@ -49,59 +68,61 @@ codex-extras/
 前置:带 base bundle 的 dsh profile(提供 `commands` 与 `subagents`),PATH 上有 `pnpm`。
 
 ```sh
-# 1) bundle:/review 与 /fill 对该 profile 的所有会话可用
+# 一条命令安装 bundle、/review 与 /fill 行,以及 codex-style 预设声明
 dsh plugin --profile <名字> add <本目录路径>
 # 或在代码目录里执行:  dsh plugin --profile <名字> add .
-
-# 2) 预设:安装配套 agent 预设
-mkdir -p "$HOME/.dsh/.agent-presets/codex-style"   # Windows: %USERPROFILE%\.dsh\.agent-presets\codex-style
-cp -R preset/codex-style/. <目标>
 ```
 
-重启 Host 使 bundle patch 生效,然后新建会话选预设(“Codex 风格”),或在 `agent-presets` 设置命名空间下把它设为 profile/用户默认。
+重启 Host 使 bundle patch 生效,然后新建会话选预设(“Codex 风格”),或在
+`agent-presets` 设置命名空间下把它设为 profile/用户默认。0.2.x 不再有
+`~/.dsh/.agent-presets/` 复制步骤,预设就是 bundle 内的声明行。
 
 ## 升级 harness
 
-这些都不在 harness 仓库里,升级 dsh 就是普通升级部署——无需合并、不会冲突。仍有两处需要注意。profile 丢了依赖时,重跑一次 `dsh plugin` 命令;然后复查预设:它的行引用的是 harness 已安装的包及其配置键,某个版本可能把它们改名或改结构,于是一行要么挂载失败,要么挂上了却什么都不做。检查方法见 [AGENTS.md](AGENTS.md)。
+这些都不在 harness 仓库里,升级 dsh 就是普通升级部署——无需合并、不会冲突。
+仍有两处需要注意。profile 丢了依赖时,重跑一次 `dsh plugin` 命令;然后复查
+预设声明:它的子行引用 harness 已安装的包及其配置键,某个版本可能把它们改名
+或改结构,于是一行要么挂载失败,要么挂上了却什么都不做。检查方法见
+[AGENTS.md](AGENTS.md)。
+
+本 checkout 面向 dsh **0.2.x**。跨这个边界升级要小心:目录预设
+(`$DSH_HOME/.agent-presets/`)已不再读取,`context.subagents.start()` 变成
+`context.subagents.startActivation()`。本包已完成迁移;更早的 checkout
+必须先迁移才能挂载。
 
 ## 迁移到另一台机器
 
-这里全是普通文件加一条 profile 命令——没有任何机器相关路径。迁移 = 装 dsh、复制预设目录、安装 bundle。把本仓库当作唯一真源:新机器上克隆它(或整目录复制 `codex-extras`),然后对着该 checkout 执行:
+这里全是普通文件加一条 profile 命令——没有任何机器相关路径。把本仓库当作
+唯一真源:新机器上克隆它(或整目录复制 `codex-extras`),然后对着该
+checkout 执行:
 
 ```sh
 # 在新机器上:先装 dsh 并创建/选择一个 profile
 git clone <codex-extras 仓库地址>     # 或把 codex-extras 目录整体复制过去
 dsh plugin --profile <名字> add <checkout 目录>
-
-# 预设:复制整个 preset/codex-style 目录(含 plugins/ 与 skills/)
-#   Windows:   %USERPROFILE%\.dsh\.agent-presets\codex-style
-#   macOS/Linux: $HOME/.dsh/.agent-presets/codex-style
-#   (设置了 $DSH_HOME 时以其为准)
 ```
 
-重启 Host,然后在新建会话里选“Codex 风格”预设,试一下 `/review` 与 `/fill`。
+重启 Host,然后在新建会话里选“Codex 风格”预设,试一下 `/review` 与
+`/fill`。
 
 ### 交给 Agent 自安装
 
 ```text
-请在这台机器上帮我自安装 codex-style 预设和 codex-extras 插件。
+请在这台机器上帮我自安装 codex-extras bundle。
 
-背景:codex-extras 是一个 dsh profile bundle,它的仓库里同时带着 codex-style
-预设源码(preset/codex-style/ 目录)。目标:预设出现在 preset 选择器
-("Codex 风格"),且 profile 装上 bundle 后 /review 与 /fill 命令可用。
+背景:codex-extras 是 dsh 0.2.x 的 profile bundle。它的 patch 在 profile
+根注册 /review 与 /fill,并声明 "codex-style" agent 预设(persona 提供者、
+单编辑器、review skill)。不涉及 ~/.dsh/.agent-presets 目录。
 
 请按顺序执行:
 1. 先找到 codex-extras 的目录:如果我有给出 git 地址就克隆,否则问我本地路径。
-2. 如果不知道用哪个 profile,先用 dsh --help / dsh profile 列出来;然后执行:
+2. 如果不知道用哪个 profile,先用 dsh --help 列出来;然后执行:
    dsh plugin --profile <profile名> add <codex-extras目录路径>
    如果 PATH 里没有 pnpm,停下来告诉我,不要绕开。
-3. 把 codex-extras 仓库里的 preset/codex-style/ 整个目录(agent.cordis.yml、
-   preset.yml、plugins/、skills/ 全部)复制到 <dshHome>/.agent-presets/codex-style
-   (dshHome = $env:DSH_HOME,未设置则是 %USERPROFILE%\.dsh)。若目标已存在,先备份再覆盖。
-4. 写入或执行被沙箱拒绝时:只把被拒的那一步原样重试一次,带上最窄的
+3. 写入或执行被沙箱拒绝时:只把被拒的那一步原样重试一次,带上最窄的
    sandbox_permissions 和一句 justification;除此之外不要用其它方式绕过。
-5. 完成后汇报:bundle 装进了哪个 profile、预设的最终路径、以及仍需人工的部分
-   (重启 Host、用 "Codex 风格" 新建会话、敲 /review 与 /fill 冒烟测试)。
+4. 完成后汇报:bundle 装进了哪个 profile,以及仍需人工的部分(重启 Host、
+   用 "Codex 风格" 新建会话、敲 /review 与 /fill 冒烟测试)。
    某一步失败就报告确切报错并停止,不要瞎猜。
 ```
 
@@ -109,14 +130,21 @@ dsh plugin --profile <名字> add <checkout 目录>
 
 ```sh
 dsh plugin --profile <名字> remove codex-extras
-# 并删除预设目录 ~/.dsh/.agent-presets/codex-style
+# 预设声明随 bundle 一起消失,没有其它目录需要删除
 ```
 
 ## 添加能力
 
 有两个挂载面,规则决定选哪个:
 
-- **profile bundle 行**(`cordis.patch.yml`):host 平面能力,对所有会话可用(如 `/review`、`/fill`);
-- **预设行**:per-agent 能力。预设行只能引用预设自带的文件(`./plugins/…`)或 harness 已安装的包——不能是 profile 安装的 bundle——所以那些无法做成 harness 包的 per-agent 插件,就以文件形式放在预设目录内(如 `plugins/persona.js`)。
+- **profile bundle 行**(`cordis.patch.yml`):host 平面能力,对所有会话
+  可用(如 `/review`、`/fill`);
+- **预设行**(`presets/codex-style.patch.yml`):per-agent 能力。预设行只能
+  引用安装在 profile 或 harness 里的包,不能引用相对预设目录的文件——声明
+  继承的是声明方 Loader 的 base(profile 目录),不是某个预设目录。要随预设
+  携带插件,就把它做成包子路径:`persona.js` 导出为 `codex-extras/persona`
+  正是这个原因。
 
-添加插件文件并从所选的行引用它。**模块格式取决于挂载面**:bundle 包内(包声明了 `"type": "module"`)的插件用 ESM,具名导出 `name` / `inject` / `apply` 且无 default export;**预设本地插件文件**(以 `./plugins/…` 从预设行引用、位于没有 `package.json` 的用户主目录下)**必须是 CommonJS**——`module.exports = { name, inject, apply }`——因为加载器对它走 `require()`,那里的 ESM 语法 `.js` 会被识别成 ES Module 并触发 `require(esm)` 循环错误(参见 `plugins/persona.js`)。两种形式暴露的都是同样的函数插件字段。
+在 `"type": "module"` 的包内新增插件文件,导出为子路径,再从选中的行引用
+该子路径。两个挂载面使用同一套函数插件契约:具名导出 `name` / `inject` /
+`apply`,无 default export。0.2.x 已不再使用预设本地 CommonJS 文件那套规则。
