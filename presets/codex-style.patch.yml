@@ -151,18 +151,22 @@
             isolate:
               workflowEngine: true
             config:
+              # 0.2.2-rc.1: the control plugin now registers the shared
+              # `list_agents` tool itself; the separate `.../list-agents`
+              # subpath was removed from the package.
               - id: tool-subagent-control
                 name: '@deepseek-ai/dsh-tool-subagent-control'
-
-              - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
               - id: tool-subagent
                 name: '@deepseek-ai/dsh-tool-subagent'
                 config:
                   provider: spawn
                   toolName: subagent
-                  modelSelectionSettings: true
+                  # 0.2.2-rc.1 renamed `modelSelectionSettings` to
+                  # `modelSelection` and gave model discovery its own flag
+                  # (matches the shipped `standard` preset).
+                  modelSelection: true
+                  modelDiscovery: true
 
               - id: tool-subagent-fork
                 name: '@deepseek-ai/dsh-tool-subagent'
